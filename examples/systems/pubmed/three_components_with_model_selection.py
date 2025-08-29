@@ -11,151 +11,22 @@ from dotenv import load_dotenv
 import random
 from optimas.arch.system import CompoundAISystem
 from optimas.arch.base import BaseComponent
-# from optimas.utils.api import get_llm_output
+from optimas.utils.api import get_llm_output
 import torch
 import torch.nn.functional as F
 import numpy as np
 import re
-import litellm
 
-from functools import lru_cache
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline, GenerationConfig
-
-# Treat these as "local" OSS names (you can add more)
+# List of available models
 MODELS_LIST = [
-    "Qwen/Qwen2.5-7B-Instruct",
-    "meta-llama/Llama-3.1-8B-Instruct",
-    "mistralai/Mistral-7B-Instruct-v0.3",
+    "gpt-4o",
+    "gpt-4o-mini",
+    "gpt-3.5-turbo-0125",
+    "gpt-4-turbo",
+    "claude-3-5-haiku-20241022",
+    "claude-3-5-sonnet-20241022",
+    "claude-3-7-sonnet-20250219",
 ]
-
-def _is_provider_model(model: str) -> bool:
-    """
-    Return True if model clearly specifies a provider (for LiteLLM),
-    e.g. 'openai/gpt-4o', 'anthropic/claude-3-5-sonnet', 'huggingface/Qwen/...', 'ollama/qwen2.5:7b-instruct'
-    """
-    return "/" in model and model.split("/", 1)[0] in {"openai", "anthropic", "huggingface", "ollama", "azure", "together", "bedrock"}
-
-def _supports_chat_template(tokenizer) -> bool:
-    # tokenizer.apply_chat_template exists for chat-tuned models
-    return hasattr(tokenizer, "apply_chat_template")
-
-@lru_cache(maxsize=4)
-def _load_local_eager(model_name: str):
-    """
-    Eager, single-device load to avoid meta tensors.
-    - No accelerate sharding
-    - No pipeline (which would call model.to(...) again)
-    """
-    use_cuda = torch.cuda.is_available()
-    device = torch.device("cuda", 0) if use_cuda else torch.device("cpu")
-    torch_dtype = torch.bfloat16 if use_cuda else torch.float32
-
-    tok = AutoTokenizer.from_pretrained(model_name, use_fast=True, trust_remote_code=True)
-    if tok.pad_token is None and tok.eos_token is not None:
-        tok.pad_token = tok.eos_token
-
-    mdl = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        torch_dtype=torch_dtype,
-        device_map=None,            # load fully on CPU first (no meta leftovers)
-        low_cpu_mem_usage=False,    # force eager materialization of weights
-        trust_remote_code=True,
-    )
-    mdl.to(device)
-    mdl.eval()
-    return tok, mdl, device
-
-def _apply_chat_template(tok, user_msg: str, system_msg: str | None):
-    if _supports_chat_template(tok):
-        msgs = []
-        if system_msg:
-            msgs.append({"role": "system", "content": system_msg})
-        msgs.append({"role": "user", "content": user_msg})
-        return tok.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
-    prefix = f"[SYSTEM]\n{system_msg}\n\n" if system_msg else ""
-    return prefix + user_msg
-
-def _local_generate(*, message: str, model: str, max_new_tokens: int = 512, temperature: float = 0.0, system_prompt: str | None = None) -> str:
-    tok, mdl, device = _load_local_eager(model)
-    prompt_text = _apply_chat_template(tok, message, system_prompt)
-
-    do_sample = temperature > 0.0
-    temperature = max(1e-6, float(temperature)) if do_sample else 1.0
-
-    inputs = tok(prompt_text, return_tensors="pt").to(device)
-
-    gen_config = GenerationConfig(
-        max_new_tokens=int(max_new_tokens),
-        do_sample=do_sample,
-        temperature=temperature,
-        top_p=0.95 if do_sample else 1.0,
-        eos_token_id=tok.eos_token_id,
-        pad_token_id=tok.pad_token_id,
-    )
-
-    with torch.no_grad():
-        output_ids = mdl.generate(**inputs, generation_config=gen_config)
-
-    # Strip prompt tokens
-    gen_ids = output_ids[0, inputs["input_ids"].shape[1]:]
-    return tok.decode(gen_ids, skip_special_tokens=True).strip()
-
-# ---- Unified entrypoint ----
-def get_llm_output(
-    message,
-    model=MODELS_LIST[0],
-    max_new_tokens=4096,
-    temperature=1.0,
-    json_object=False,
-    system_prompt=None,
-    **generation_kwargs
-):
-    """
-    If `model` is one of MODELS_LIST (OSS HF id) OR not provider-qualified, run locally via transformers.
-    If `model` encodes a provider (e.g. 'openai/...', 'anthropic/...', 'huggingface/...', 'ollama/...'), route to LiteLLM.
-    """
-    # Normalize message(s)
-    if isinstance(message, str):
-        messages = [{"role": "user", "content": message}]
-        if system_prompt:
-            messages.insert(0, {"role": "system", "content": system_prompt})
-        plain_user_msg = message
-    else:
-        messages = message
-        sys_msg = next((m["content"] for m in messages if m.get("role") == "system"), None)
-        user_msg = next((m["content"] for m in messages if m.get("role") == "user"), "")
-        if system_prompt is None:
-            system_prompt = sys_msg
-        plain_user_msg = user_msg
-
-    # Local path
-    if (model in MODELS_LIST) or (not _is_provider_model(model)):
-        text = _local_generate(
-            message=plain_user_msg,
-            model=model,
-            max_new_tokens=max_new_tokens,
-            temperature=temperature,
-            system_prompt=system_prompt,
-        )
-        if json_object:
-            return json.loads(text)
-        return text
-
-    # Provider path via LiteLLM
-    import litellm
-    kwargs = {
-        "model": model,
-        "messages": messages,
-        "max_tokens": max_new_tokens,
-        "temperature": temperature,
-    }
-    kwargs.update(generation_kwargs)
-    if json_object:
-        kwargs["response_format"] = {"type": "json_object"}
-
-    resp = litellm.completion(**kwargs)
-    content = resp.choices[0].message["content"]
-    return json.loads(content) if json_object else content
 
 class ModelSelectorModule(BaseComponent):
     """
@@ -166,9 +37,9 @@ class ModelSelectorModule(BaseComponent):
         self, 
         task_type="context_analyst", 
         variable_search_space={"model_selection": MODELS_LIST}, 
-        initial_variable=MODELS_LIST[0], 
+        initial_variable="gpt-4o-mini", 
         models_list=MODELS_LIST, 
-        model=MODELS_LIST[0], 
+        model="gpt-4o-mini", 
         force_model=None, 
         max_tokens=1024, 
         temperature=0.0
@@ -201,7 +72,7 @@ class ContextAnalystModule(BaseComponent):
     to address a question.
     """
     
-    def __init__(self, model=MODELS_LIST[0], max_tokens=4096, temperature=0.0):
+    def __init__(self, model="gpt-4o-mini", max_tokens=4096, temperature=0.0):
         """
         Initialize the Context Analyst Module.
         
@@ -273,7 +144,7 @@ class ProblemSolverModule(BaseComponent):
     the correct yes/no/maybe answer based on evidence.
     """
     
-    def __init__(self, model=MODELS_LIST[0], max_tokens=4096, temperature=0.0):
+    def __init__(self, model="gpt-4o-mini", max_tokens=4096, temperature=0.0):
         """
         Initialize the Problem Solver Module.
         
@@ -387,7 +258,7 @@ def system_engine(force_context_model=None, force_solver_model=None, *args, **kw
     Returns:
         CompoundAISystem: The configured system
     """
-    selector_model = kwargs.pop("selector_model", MODELS_LIST[0])
+    selector_model = kwargs.pop("selector_model", "gpt-4o-mini")
     temperature = kwargs.pop("temperature", 0.0)
     eval_func = kwargs.pop("eval_func", pubmed_eval_func)
     max_tokens = kwargs.pop("max_tokens", 4096)
@@ -408,12 +279,12 @@ def system_engine(force_context_model=None, force_solver_model=None, *args, **kw
         max_tokens=1024
     )
     context_analyst = ContextAnalystModule(
-        model=MODELS_LIST[0],
+        model="gpt-4o-mini",
         temperature=temperature,
         max_tokens=max_tokens
     )
     problem_solver = ProblemSolverModule(
-        model=MODELS_LIST[0],
+        model="gpt-4o-mini",
         temperature=temperature,
         max_tokens=max_tokens
     )
@@ -444,11 +315,11 @@ def system_engine(force_context_model=None, force_solver_model=None, *args, **kw
 
 if __name__ == "__main__":
     # Load environment variables 
-    # dotenv_path = osp.expanduser('.env')
-    # load_dotenv(dotenv_path)
+    dotenv_path = osp.expanduser('.env')
+    load_dotenv(dotenv_path)
     
     # Create the system
-    system = system_engine(force_context_model=MODELS_LIST[0], force_solver_model=MODELS_LIST[0])
+    system = system_engine(force_context_model="gpt-4o-mini", force_solver_model="claude-3-haiku-20240307")
     
     # Example PubMed question
     context = "Programmed cell death (PCD) is the regulated death of cells within an organism. The lace plant (Aponogeton madagascariensis) produces perforations in its leaves through PCD. The following paper elucidates the role of mitochondrial dynamics during developmentally regulated PCD in vivo in A. madagascariensis. This treatment resulted in lace plant leaves with a significantly lower number of perforations compared to controls, and that displayed mitochondrial dynamics similar to that of non-PCD cells."
