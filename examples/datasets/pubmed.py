@@ -23,6 +23,7 @@ def load_jsonl(file_path: str) -> List[Dict[str, Any]]:
 
 def dataset_engine(
     train_size: Optional[int] = None,
+    test_size: Optional[int] = None,
     data_path: str = "examples/data/",
     train_file: str = "combined_PubMedQA_train.jsonl",
     test_file: str = "combined_PubMedQA_test.jsonl",
@@ -69,6 +70,11 @@ def dataset_engine(
     trainset = train_val_set[:split_idx]
     valset = train_val_set[split_idx:]
 
+    # Shuffle and trim train set if necessary
+    if test_size is not None and test_size < len(test_data):
+        random.shuffle(test_data)
+        test_data = test_data[:10]
+        
     # Convert test data
     testset = [
         Example(
@@ -78,6 +84,8 @@ def dataset_engine(
         ).with_inputs("question", "context")
         for item in test_data
     ]
+
+    print(f"Loaded {len(trainset)} training, {len(valset)} validation, and {len(testset)} test examples.")
 
     return trainset, valset, testset
 

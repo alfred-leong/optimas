@@ -1,5 +1,11 @@
 import litellm
 import json
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+HF_MODELS = [
+    "Qwen/Qwen2.5-7B-Instruct",
+    "meta-llama/Llama-3.1-8B-Instruct"
+]
 
 def get_llm_output(message, 
                    model="gpt-4o", 
@@ -41,12 +47,38 @@ def get_llm_output(message,
     if json_object:
         kwargs["response_format"] = {"type": "json_object"}
 
-    # Call litellm
-    response = litellm.completion(**kwargs)
+    if model in HF_MODELS:
+        # Handle Hugging Face models separately
+        response = get_response_from_hf_model(**kwargs)
+        content = response
+    else:
+        # Call litellm
+        response = litellm.completion(**kwargs)
 
-    # litellm returns an object similar to OpenAI
-    content = response.choices[0].message.content
+        # litellm returns an object similar to OpenAI
+        content = response.choices[0].message.content
     if json_object:
         return json.loads(content)
     else:
         return content
+
+def get_response_from_hf_model(model, messages, max_tokens, **kwargs):
+    model_id = model
+    model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype="auto", device_map="auto")
+    model.eval()
+
+    tokenizer = AutoTokenizer.from_pretrained(model_id)
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "left"
+
+    text = tokenizer.apply_chat_template(
+        messages,
+        tokenize=False,
+        add_generation_prompt=True
+    )
+    inputs = tokenizer([text], return_tensors="pt", padding=True, truncation=True).to(model.device)
+    outputs = model.generate(**inputs, max_new_tokens=max_tokens, **kwargs)
+    response_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    print(response_text)
+    return response_text

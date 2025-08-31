@@ -9,5 +9,7 @@ output_dir: outputs/eval
 
 # Optional
 dotenv_path: .env
-max_sample_workers: 4
-max_eval_workers: 4
+max_sample_workers: 1
+max_eval_workers: 1
+train_size: 100
+test_size: 100

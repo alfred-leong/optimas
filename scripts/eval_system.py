@@ -24,8 +24,8 @@ class ScriptArgs:
     """
     # Model and Pipeline Configuration
     run_name: str = "default"
-    dataset: str = "hotpotqa"
-    system_name: str = "hotpotqa_system"
+    dataset: str = "pubmed"
+    system_name: str = "pubmed_system"
     num_repeat: int = 3
     split: str = "test"  # Options: "val", "test"
 
@@ -37,6 +37,8 @@ class ScriptArgs:
     # Worker Config (injected dynamically)
     max_sample_workers: int = 4
     max_eval_workers: int = 2
+    train_size: Optional[int] = None  # Added to allow train size specification
+    test_size: Optional[int] = None  # Added to allow test size specification
 
     def __post_init__(self):
         """Convert string 'None' values to None objects."""

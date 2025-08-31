@@ -19,13 +19,8 @@ import re
 
 # List of available models
 MODELS_LIST = [
-    "gpt-4o",
-    "gpt-4o-mini",
-    "gpt-3.5-turbo-0125",
-    "gpt-4-turbo",
-    "claude-3-5-haiku-20241022",
-    "claude-3-5-sonnet-20241022",
-    "claude-3-7-sonnet-20250219",
+    "Qwen/Qwen2.5-7B-Instruct",
+    "meta-llama/Llama-3.1-8B-Instruct"
 ]
 
 class ModelSelectorModule(BaseComponent):
@@ -37,7 +32,7 @@ class ModelSelectorModule(BaseComponent):
         self, 
         task_type="context_analyst", 
         variable_search_space={"model_selection": MODELS_LIST}, 
-        initial_variable="gpt-4o-mini", 
+        initial_variable="Qwen/Qwen2.5-7B-Instruct", 
         models_list=MODELS_LIST, 
         model="gpt-4o-mini", 
         force_model=None, 
@@ -72,7 +67,7 @@ class ContextAnalystModule(BaseComponent):
     to address a question.
     """
     
-    def __init__(self, model="gpt-4o-mini", max_tokens=4096, temperature=0.0):
+    def __init__(self, model="Qwen/Qwen2.5-7B-Instruct", max_tokens=4096, temperature=0.0):
         """
         Initialize the Context Analyst Module.
         
@@ -136,7 +131,7 @@ Please summarize the relevant information from the context related to the questi
         )
         
         return {"summary": response}
-        
+
 
 class ProblemSolverModule(BaseComponent):
     """
@@ -144,7 +139,7 @@ class ProblemSolverModule(BaseComponent):
     the correct yes/no/maybe answer based on evidence.
     """
     
-    def __init__(self, model="gpt-4o-mini", max_tokens=4096, temperature=0.0):
+    def __init__(self, model="Qwen/Qwen2.5-7B-Instruct", max_tokens=4096, temperature=0.0):
         """
         Initialize the Problem Solver Module.
         
@@ -258,8 +253,8 @@ def system_engine(force_context_model=None, force_solver_model=None, *args, **kw
     Returns:
         CompoundAISystem: The configured system
     """
-    selector_model = kwargs.pop("selector_model", "gpt-4o-mini")
-    temperature = kwargs.pop("temperature", 0.0)
+    selector_model = kwargs.pop("selector_model", "Qwen/Qwen2.5-7B-Instruct")
+    temperature = kwargs.pop("temperature", 0.5)
     eval_func = kwargs.pop("eval_func", pubmed_eval_func)
     max_tokens = kwargs.pop("max_tokens", 4096)
 
@@ -279,12 +274,12 @@ def system_engine(force_context_model=None, force_solver_model=None, *args, **kw
         max_tokens=1024
     )
     context_analyst = ContextAnalystModule(
-        model="gpt-4o-mini",
+        model="Qwen/Qwen2.5-7B-Instruct",
         temperature=temperature,
         max_tokens=max_tokens
     )
     problem_solver = ProblemSolverModule(
-        model="gpt-4o-mini",
+        model="Qwen/Qwen2.5-7B-Instruct",
         temperature=temperature,
         max_tokens=max_tokens
     )
@@ -319,7 +314,7 @@ if __name__ == "__main__":
     load_dotenv(dotenv_path)
     
     # Create the system
-    system = system_engine(force_context_model="gpt-4o-mini", force_solver_model="claude-3-haiku-20240307")
+    system = system_engine(force_context_model="Qwen/Qwen2.5-7B-Instruct", force_solver_model="Qwen/Qwen2.5-7B-Instruct")
     
     # Example PubMed question
     context = "Programmed cell death (PCD) is the regulated death of cells within an organism. The lace plant (Aponogeton madagascariensis) produces perforations in its leaves through PCD. The following paper elucidates the role of mitochondrial dynamics during developmentally regulated PCD in vivo in A. madagascariensis. This treatment resulted in lace plant leaves with a significantly lower number of perforations compared to controls, and that displayed mitochondrial dynamics similar to that of non-PCD cells."
