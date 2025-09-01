@@ -9,7 +9,7 @@ from transformers import (
 import copy
 from dataclasses import dataclass, field
 from datasets import load_dataset
-from peft import LoraConfig
+from peft import LoraConfig, TaskType
 from typing import List, Optional
 import os.path as osp
 import json
@@ -90,7 +90,7 @@ def main():
             lora_alpha=args.lora_alpha,
             lora_dropout=args.lora_dropout,
             bias="none",
-            task_type="CAUSAL_LM",
+            task_type=TaskType.SEQ_CLS,
             init_lora_weights="gaussian",
             target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
                             "gate_proj", "up_proj", "down_proj"]

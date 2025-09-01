@@ -4,10 +4,10 @@ system: pubmed_system
 train_size: 20
 sample_temperature: null  # or a float like 0.7 if needed
 push_to_hub: true # huggingface-cli login 
-max_workers: 4
+max_workers: 1
 
 num_rollouts: 3
-num_samples: 4
+num_samples: 2
 num_repeats: 1
 
 output_dir: outputs/data

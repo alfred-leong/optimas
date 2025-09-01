@@ -93,6 +93,7 @@ if __name__ == "__main__":
     # Load dataset
     logger.info(f"Loading dataset: {args.dataset}")
     trainset, valset, testset = registered_datasets[args.dataset]()
+    # TODO: Try different trainset splits for data selection motivation
     valset = valset[:args.val_size]
 
     logger.info(
