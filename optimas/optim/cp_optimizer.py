@@ -232,6 +232,12 @@ class ComponentOptimizer:
         trainset_per_component = [
             Example(**example['input']).with_inputs(*component.input_fields) \
             for example in self.reward_dataset[component_name]][:self.args.per_component_train_size]
+        
+        # Save trainset_per_component to a JSON file
+        trainset_json_path = os.path.join("save_trainset", f"{component_name}_trainset.json")
+        with open(trainset_json_path, "w") as f:
+            json.dump([ex.inputs() for ex in trainset_per_component], f, indent=2)
+        logger.info(f"Saved trainset for component '{component_name}' to {trainset_json_path}")
 
         for i, param_combo in enumerate(param_combinations):
             params = dict(zip(param_keys, param_combo))
