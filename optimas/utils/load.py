@@ -47,8 +47,8 @@ def load_model_and_tokenizer(
     state_dict = None
     if state_dict_path is not None:
         state_dict = torch.load(state_dict_path, weights_only=True)
-        kwargs.setdefault("num_labels", infer_output_dim(state_dict))
-        logger.info(f"Inferred output dimension: {kwargs['num_labels']}")
+        # kwargs.setdefault("num_labels", infer_output_dim(state_dict))
+        # logger.info(f"Inferred output dimension: {kwargs['num_labels']}")
 
     if is_trainable:
         device = f"cuda:{os.getenv('LOCAL_RANK', 0)}"

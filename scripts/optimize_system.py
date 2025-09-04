@@ -3,7 +3,7 @@ import os
 import json
 import yaml
 import datetime
-from peft import LoraConfig
+from peft import LoraConfig, TaskType
 from typing import List, Optional
 
 import torch
@@ -118,7 +118,7 @@ if __name__ == "__main__":
         lora_alpha=args.lora_alpha,
         lora_dropout=args.lora_dropout,
         bias="none",
-        task_type="CAUSAL_LM",
+        task_type=TaskType.SEQ_CLS,
         init_lora_weights="gaussian",
         target_modules=[
             "q_proj",
